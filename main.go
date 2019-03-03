@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/chzyer/readline"
 )
 
 type Expression interface {
@@ -31,9 +31,21 @@ type Bool bool
 
 func (b Bool) ExprToStr() string {
 	if b {
-		return "true"
+		return "#t"
 	}
-	return "false"
+	return "#f"
+}
+
+type String string
+
+func (s String) ExprToStr() string {
+	return `"` + strings.ReplaceAll(string(s), `"`, `\"`) + `"`
+}
+
+type Error string
+
+func (e Error) ExprToStr() string {
+	return "!{" + string(e) + "}"
 }
 
 type Symbol string
@@ -59,7 +71,7 @@ type Procedure struct {
 
 func (p Procedure) ExprToStr() string {
 	if p.f != nil {
-		return "#function"
+		return "#built-in-function"
 	}
 	args := List{}
 	for _, x := range p.args {
@@ -118,10 +130,13 @@ func tokenize(str string) *[]string {
 
 func atom(token string) Expression {
 	switch token {
-	case "true":
+	case "#t":
 		return Bool(true)
-	case "false":
+	case "#f":
 		return Bool(false)
+	}
+	if token[0] == '"' {
+		return String(strings.ReplaceAll(strings.Trim(token, `"`), `\"`, `"`))
 	}
 	f, err := strconv.ParseFloat(token, 64)
 	if err == nil {
@@ -163,7 +178,7 @@ func eval(exp Expression, env *Environment) Expression {
 		case Symbol:
 			v, _ := env.Get(string(exp.(Symbol)))
 			return v
-		case Number, Bool:
+		case Number, Bool, String:
 			return exp
 		case List:
 			listExp := exp.(List)
@@ -206,6 +221,7 @@ func eval(exp Expression, env *Environment) Expression {
 				if proc.f != nil {
 					return proc.f(args)
 				} else {
+					//fmt.Println("using TCO")
 					env = NewEnvironment(proc.env)
 					for i, x := range proc.args {
 						env.Set(string(x), args[i])
@@ -219,56 +235,28 @@ func eval(exp Expression, env *Environment) Expression {
 }
 
 func main() {
-	env := NewEnvironment(nil)
-	env.Set("+", Procedure{f: func(args []Expression) Expression {
-		return Number(args[0].(Number) + args[1].(Number))
-	}})
-	env.Set("-", Procedure{f: func(args []Expression) Expression {
-		return Number(args[0].(Number) - args[1].(Number))
-	}})
-	env.Set("*", Procedure{f: func(args []Expression) Expression {
-		return Number(args[0].(Number) * args[1].(Number))
-	}})
-	env.Set("/", Procedure{f: func(args []Expression) Expression {
-		return Number(args[0].(Number) / args[1].(Number))
-	}})
-	env.Set("<", Procedure{f: func(args []Expression) Expression {
-		return Bool(args[0].(Number) < args[1].(Number))
-	}})
-	env.Set("<=", Procedure{f: func(args []Expression) Expression {
-		return Bool(args[0].(Number) <= args[1].(Number))
-	}})
-	env.Set(">", Procedure{f: func(args []Expression) Expression {
-		return Bool(args[0].(Number) > args[1].(Number))
-	}})
-	env.Set(">=", Procedure{f: func(args []Expression) Expression {
-		return Bool(args[0].(Number) >= args[1].(Number))
-	}})
-	env.Set("==", Procedure{f: func(args []Expression) Expression {
-		return Bool(args[0].(Number) == args[1].(Number))
-	}})
-	env.Set("list", Procedure{f: func(args []Expression) Expression {
-		return List(args)
-	}})
+	rl, err := readline.New("mini-lisp> ")
+	if err != nil {
+		panic(err)
+	}
+	defer rl.Close()
 
-	scanner := bufio.NewScanner(os.Stdin)
+	env := DefaultEnv()
 	for {
-		fmt.Print("mini-lisp> ")
-		if scanner.Scan() {
-			expression, err := readFromTokens(tokenize(scanner.Text()))
-			if err != nil {
-				fmt.Println("error:", err)
-				return
-			}
-			result := eval(expression, env)
-			fmt.Println(result.ExprToStr())
-		} else {
-			if err := scanner.Err(); err != nil {
-				fmt.Fprintln(os.Stderr, "reading standard input:", err)
-				os.Exit(1)
-			}
-			fmt.Println()
+		line, err := rl.Readline()
+		if err != nil {
 			return
 		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		expression, err := readFromTokens(tokenize(line))
+		if err != nil {
+			fmt.Println("error:", err)
+			return
+		}
+		result := eval(expression, env)
+		fmt.Println(result.ExprToStr())
 	}
 }
