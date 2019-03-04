@@ -65,13 +65,15 @@ func (l List) ExprToStr() string {
 }
 
 type Procedure struct {
-	args []Symbol
-	body Expression
-	env  *Environment
-	f    func(args []Expression) Expression
+	args         []Symbol
+	body         Expression
+	env          *Environment
+	f            func(args []Expression) (Expression, int)
+	continuation bool
+	depth        int
 }
 
-func (p Procedure) ExprToStr() string {
+func (p *Procedure) ExprToStr() string {
 	if p.f != nil {
 		return "#built-in-function"
 	}
@@ -106,6 +108,16 @@ func (env *Environment) Get(key string) (Expression, bool) {
 
 func (env *Environment) Set(key string, value Expression) {
 	env.values[key] = value
+}
+
+func (env *Environment) SetOuter(key string, value Expression) {
+	if _, ok := env.values[key]; ok {
+		env.values[key] = value
+		return
+	}
+	if env.outer != nil {
+		env.outer.SetOuter(key, value)
+	}
 }
 
 func pop(a *[]string) string {
@@ -174,35 +186,54 @@ func readFromTokens(tokens *[]string) (Expression, error) {
 	}
 }
 
-func eval(exp Expression, env *Environment) Expression {
+func eval(exp Expression, env *Environment, rest Expression, depth int) (Expression, int) {
 	for {
 		switch exp.(type) {
 		case Symbol:
 			v, _ := env.Get(string(exp.(Symbol)))
-			return v
+			return v, 0
 		case Number, Bool, String:
-			return exp
+			return exp, 0
 		case List:
 			listExp := exp.(List)
 			if len(listExp) == 0 {
-				return listExp
+				return listExp, 0
 			}
 			switch listExp[0] {
 			case Symbol("begin"):
-				for _, exp := range listExp[1:] {
-					eval(exp, env)
+				var ret Expression
+				var thrownDepth int
+				for i, exp := range listExp[1:] {
+					ret, thrownDepth = eval(exp, env, listExp[i+2:], depth+1)
+					if thrownDepth > 0 && thrownDepth < depth {
+						return ret, thrownDepth
+					}
 				}
-				return Nil{}
+				return ret, 0
 			case Symbol("quote"):
-				return listExp[1]
+				return listExp[1], 0
 			case Symbol("define"):
-				env.Set(string(listExp[1].(Symbol)), eval(listExp[2], env))
-				return Nil{}
+				val, thrownDepth := eval(listExp[2], env, nil, depth+1)
+				if thrownDepth > 0 && thrownDepth < depth {
+					return val, thrownDepth
+				}
+				env.Set(string(listExp[1].(Symbol)), val)
+				return Nil{}, 0
+			case Symbol("set!"):
+				val, thrownDepth := eval(listExp[2], env, nil, depth+1)
+				if thrownDepth > 0 && thrownDepth < depth {
+					return val, thrownDepth
+				}
+				env.SetOuter(string(listExp[1].(Symbol)), val)
+				return Nil{}, 0
 			case Symbol("if"):
-				test := eval(listExp[1], env)
+				test, thrownDepth := eval(listExp[1], env, nil, depth+1)
+				if thrownDepth > 0 && thrownDepth < depth {
+					return test, thrownDepth
+				}
 				if b, ok := test.(Bool); (ok && !bool(b)) || IsNil(test) {
 					if len(listExp) < 4 {
-						return Nil{}
+						return Nil{}, 0
 					}
 					exp = listExp[3]
 					continue
@@ -214,16 +245,61 @@ func eval(exp Expression, env *Environment) Expression {
 				for _, x := range listExp[1].(List) {
 					args = append(args, x.(Symbol))
 				}
-				return Procedure{
+				return &Procedure{
 					args: args,
 					body: listExp[2],
 					env:  env,
+				}, 0
+			case Symbol("call/cc"):
+				continuation := &Procedure{
+					env:          env,
+					continuation: true,
+					body:         rest,
+					f: func(args []Expression) (Expression, int) {
+						thrownValue := args[0]
+						return thrownValue, depth
+					},
+					depth: depth,
 				}
+				arg, thrownDepth := eval(listExp[1], env, nil, depth+1)
+				if thrownDepth > 0 && thrownDepth < depth {
+					return arg, thrownDepth
+				}
+				proc := arg.(*Procedure)
+				// call the lambda
+				procEnv := NewEnvironment(proc.env)
+				procEnv.Set(string(proc.args[0]), continuation)
+				val, thrownDepth := eval(proc.body, procEnv, nil, depth+1)
+				if thrownDepth > 0 && thrownDepth < depth {
+					return val, thrownDepth
+				}
+				continuation.f = nil
+				return val, 0
 			default:
-				proc := eval(listExp[0], env).(Procedure)
+				procExp, thrownDepth := eval(listExp[0], env, nil, depth+1)
+				if thrownDepth > 0 && thrownDepth < depth {
+					return procExp, thrownDepth
+				}
+				proc := procExp.(*Procedure)
+				if proc.continuation && proc.f == nil {
+					env = proc.env
+					if proc.body == nil {
+						return Nil{}, 0
+					}
+					exprList := proc.body.(List)
+					exprList = append(List{Symbol("begin")}, exprList...)
+					exp = exprList
+					rest = nil
+					depth++
+					continue
+				}
 				args := []Expression{}
 				for _, argExp := range listExp[1:] {
-					args = append(args, eval(argExp, env))
+					evalArgExp, thrownDepth := eval(argExp, env, nil, depth+1)
+					if thrownDepth > 0 && thrownDepth < depth {
+						return evalArgExp, thrownDepth
+					}
+					args = append(args, evalArgExp)
 				}
 				if proc.f != nil {
 					return proc.f(args)
@@ -233,11 +309,12 @@ func eval(exp Expression, env *Environment) Expression {
 						env.Set(string(x), args[i])
 					}
 					exp = proc.body
+					depth++
 				}
 			}
 		}
 	}
-	return Nil{}
+	return Nil{}, 0
 }
 
 func main() {
@@ -254,7 +331,7 @@ func main() {
 			if err != nil {
 				return
 			}
-			eval(expr, env)
+			eval(expr, env, nil, 1)
 		}
 		return
 	}
@@ -277,7 +354,7 @@ func main() {
 			fmt.Println("error:", err)
 			return
 		}
-		result := eval(expression, env)
+		result, _ := eval(expression, env, nil, 1)
 		fmt.Println(result.ExprToStr())
 	}
 }
