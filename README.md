@@ -21,6 +21,7 @@ A small Lisp implementation in Go.
 * REPL
 * Lambdas
 * Tail recursion optimization
+* call/cc
 
 ## References
 
