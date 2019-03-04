@@ -273,7 +273,6 @@ func eval(exp Expression, env *Environment, rest Expression, depth int) (Express
 				if thrownDepth > 0 && thrownDepth < depth {
 					return val, thrownDepth
 				}
-				continuation.f = nil
 				return val, 0
 			default:
 				procExp, thrownDepth := eval(listExp[0], env, nil, depth+1)
@@ -281,7 +280,7 @@ func eval(exp Expression, env *Environment, rest Expression, depth int) (Express
 					return procExp, thrownDepth
 				}
 				proc := procExp.(*Procedure)
-				if proc.continuation && proc.f == nil {
+				if proc.continuation && len(listExp[1:]) == 0 {
 					env = proc.env
 					if proc.body == nil {
 						return Nil{}, 0
