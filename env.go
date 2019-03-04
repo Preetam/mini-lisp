@@ -1,6 +1,9 @@
 package main
 
-import "io/ioutil"
+import (
+	"fmt"
+	"io/ioutil"
+)
 
 func DefaultEnv() *Environment {
 	env := NewEnvironment(nil)
@@ -14,6 +17,8 @@ func DefaultEnv() *Environment {
 	env.Set(">=", Procedure{f: func(args []Expression) Expression { return Bool(args[0].(Number) >= args[1].(Number)) }})
 	env.Set("=", Procedure{f: func(args []Expression) Expression { return Bool(args[0].(Number) == args[1].(Number)) }})
 	env.Set("list", Procedure{f: func(args []Expression) Expression { return List(args) }})
+	env.Set("print", Procedure{f: func(args []Expression) Expression { fmt.Println(args[0].(String)); return Nil{} }})
+	env.Set("str", Procedure{f: func(args []Expression) Expression { return String(args[0].ExprToStr()) }})
 	env.Set("save", Procedure{f: func(args []Expression) Expression {
 		filename := args[0].(String)
 		expr := args[1]

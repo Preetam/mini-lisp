@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -186,6 +188,11 @@ func eval(exp Expression, env *Environment) Expression {
 				return listExp
 			}
 			switch listExp[0] {
+			case Symbol("begin"):
+				for _, exp := range listExp[1:] {
+					eval(exp, env)
+				}
+				return Nil{}
 			case Symbol("quote"):
 				return listExp[1]
 			case Symbol("define"):
@@ -221,7 +228,6 @@ func eval(exp Expression, env *Environment) Expression {
 				if proc.f != nil {
 					return proc.f(args)
 				} else {
-					//fmt.Println("using TCO")
 					env = NewEnvironment(proc.env)
 					for i, x := range proc.args {
 						env.Set(string(x), args[i])
@@ -235,13 +241,28 @@ func eval(exp Expression, env *Environment) Expression {
 }
 
 func main() {
+	env := DefaultEnv()
+	if len(os.Args) > 1 {
+		filename := os.Args[1]
+		content, err := ioutil.ReadFile(string(filename))
+		if err != nil {
+			return
+		}
+		tokens := tokenize(string(content))
+		for len(*tokens) > 0 {
+			expr, err := readFromTokens(tokens)
+			if err != nil {
+				return
+			}
+			eval(expr, env)
+		}
+		return
+	}
 	rl, err := readline.New("mini-lisp> ")
 	if err != nil {
 		panic(err)
 	}
 	defer rl.Close()
-
-	env := DefaultEnv()
 	for {
 		line, err := rl.Readline()
 		if err != nil {
