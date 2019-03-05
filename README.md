@@ -15,34 +15,11 @@ A small Lisp implementation in Go.
 (sum2 1000 0)
 ; 500500
 
-;; call/cc examples
-(call/cc (lambda (throw) (+ 5 (* 10 (call/cc (lambda (escape) (* 100 (throw 3))))))))
+;; catch! examples
+(catch! (lambda (throw) (+ 5 (* 10 (catch! (lambda (escape) (* 100 (throw 3))))))))
 ; 3
-(call/cc (lambda (throw) (+ 5 (* 10 (call/cc (lambda (escape) (* 100 (escape 3))))))))
+(catch! (lambda (throw) (+ 5 (* 10 (catch! (lambda (escape) (* 100 (escape 3))))))))
 ; 35
-
-(define the-continuation #f)
-(define test
-  (lambda ()
-    (begin
-      (define i 0)
-      (call/cc (lambda (k) (set! the-continuation k)))
-      (set! i (+ i 1))
-      i
-    )
-  )
-)
-(test)
-; 1
-(the-continuation)
-; 2
-(the-continuation)
-; 3
-(define another-continuation the-continuation)
-(test)
-; 1
-(another-continuation)
-; 4
 ```
 
 ## Features
@@ -50,7 +27,6 @@ A small Lisp implementation in Go.
 * REPL
 * Lambdas
 * Tail recursion optimization
-* call/cc
 
 ## References
 

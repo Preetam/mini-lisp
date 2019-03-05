@@ -186,7 +186,7 @@ func readFromTokens(tokens *[]string) (Expression, error) {
 	}
 }
 
-func eval(exp Expression, env *Environment, rest Expression, depth int) (Expression, int) {
+func eval(exp Expression, env *Environment, depth int) (Expression, int) {
 	for {
 		switch exp.(type) {
 		case Symbol:
@@ -203,8 +203,8 @@ func eval(exp Expression, env *Environment, rest Expression, depth int) (Express
 			case Symbol("begin"):
 				var ret Expression
 				var thrownDepth int
-				for i, exp := range listExp[1:] {
-					ret, thrownDepth = eval(exp, env, listExp[i+2:], depth+1)
+				for _, x := range listExp[1:] {
+					ret, thrownDepth = eval(x, env, depth+1)
 					if thrownDepth > 0 && thrownDepth < depth {
 						return ret, thrownDepth
 					}
@@ -213,21 +213,21 @@ func eval(exp Expression, env *Environment, rest Expression, depth int) (Express
 			case Symbol("quote"):
 				return listExp[1], 0
 			case Symbol("define"):
-				val, thrownDepth := eval(listExp[2], env, nil, depth+1)
+				val, thrownDepth := eval(listExp[2], env, depth+1)
 				if thrownDepth > 0 && thrownDepth < depth {
 					return val, thrownDepth
 				}
 				env.Set(string(listExp[1].(Symbol)), val)
 				return Nil{}, 0
 			case Symbol("set!"):
-				val, thrownDepth := eval(listExp[2], env, nil, depth+1)
+				val, thrownDepth := eval(listExp[2], env, depth+1)
 				if thrownDepth > 0 && thrownDepth < depth {
 					return val, thrownDepth
 				}
 				env.SetOuter(string(listExp[1].(Symbol)), val)
 				return Nil{}, 0
 			case Symbol("if"):
-				test, thrownDepth := eval(listExp[1], env, nil, depth+1)
+				test, thrownDepth := eval(listExp[1], env, depth+1)
 				if thrownDepth > 0 && thrownDepth < depth {
 					return test, thrownDepth
 				}
@@ -250,18 +250,17 @@ func eval(exp Expression, env *Environment, rest Expression, depth int) (Express
 					body: listExp[2],
 					env:  env,
 				}, 0
-			case Symbol("call/cc"):
+			case Symbol("catch!"):
 				continuation := &Procedure{
 					env:          env,
 					continuation: true,
-					body:         rest,
 					f: func(args []Expression) (Expression, int) {
 						thrownValue := args[0]
 						return thrownValue, depth
 					},
 					depth: depth,
 				}
-				arg, thrownDepth := eval(listExp[1], env, nil, depth+1)
+				arg, thrownDepth := eval(listExp[1], env, depth+1)
 				if thrownDepth > 0 && thrownDepth < depth {
 					return arg, thrownDepth
 				}
@@ -269,14 +268,14 @@ func eval(exp Expression, env *Environment, rest Expression, depth int) (Express
 				// call the lambda
 				procEnv := NewEnvironment(proc.env)
 				procEnv.Set(string(proc.args[0]), continuation)
-				val, thrownDepth := eval(proc.body, procEnv, nil, depth+1)
+				val, thrownDepth := eval(proc.body, procEnv, depth+1)
 				if thrownDepth > 0 && thrownDepth < depth {
 					return val, thrownDepth
 				}
 				continuation.f = nil
 				return val, 0
 			default:
-				procExp, thrownDepth := eval(listExp[0], env, nil, depth+1)
+				procExp, thrownDepth := eval(listExp[0], env, depth+1)
 				if thrownDepth > 0 && thrownDepth < depth {
 					return procExp, thrownDepth
 				}
@@ -289,13 +288,12 @@ func eval(exp Expression, env *Environment, rest Expression, depth int) (Express
 					exprList := proc.body.(List)
 					exprList = append(List{Symbol("begin")}, exprList...)
 					exp = exprList
-					rest = nil
 					depth++
 					continue
 				}
 				args := []Expression{}
 				for _, argExp := range listExp[1:] {
-					evalArgExp, thrownDepth := eval(argExp, env, nil, depth+1)
+					evalArgExp, thrownDepth := eval(argExp, env, depth+1)
 					if thrownDepth > 0 && thrownDepth < depth {
 						return evalArgExp, thrownDepth
 					}
@@ -331,7 +329,7 @@ func main() {
 			if err != nil {
 				return
 			}
-			eval(expr, env, nil, 1)
+			eval(expr, env, 1)
 		}
 		return
 	}
@@ -354,7 +352,7 @@ func main() {
 			fmt.Println("error:", err)
 			return
 		}
-		result, _ := eval(expression, env, nil, 1)
+		result, _ := eval(expression, env, 1)
 		fmt.Println(result.ExprToStr())
 	}
 }
