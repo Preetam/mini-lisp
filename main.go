@@ -187,7 +187,7 @@ func readFromTokens(tokens *[]string) (Expression, error) {
 		pop(tokens)
 
 		if list[0] == Symbol("define") {
-			// (define (f ...) (...)) => (define f (...) (...))
+			// (define (f ...) (...)) => (define f (lambda (...) (...)))
 			if argsList, ok := list[1].(List); ok {
 				return List{atom("define"), argsList[0], List{atom("lambda"), argsList[1:], list[2]}}, nil
 			}
