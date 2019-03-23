@@ -165,6 +165,13 @@ func readFromTokens(tokens *[]string) (Expression, error) {
 	}
 	token := pop(tokens)
 	switch token {
+	case "'":
+		// '... => (quote ...)
+		quoted, err := readFromTokens(tokens)
+		if err != nil {
+			return nil, err
+		}
+		return List{atom("quote"), quoted}, nil
 	case "(":
 		if len(*tokens) == 0 {
 			return nil, errors.New("unexpected EOF")
@@ -178,6 +185,14 @@ func readFromTokens(tokens *[]string) (Expression, error) {
 			list = append(list, expr)
 		}
 		pop(tokens)
+
+		if list[0] == Symbol("define") {
+			// (define (f ...) (...)) => (define f (...) (...))
+			if argsList, ok := list[1].(List); ok {
+				return List{atom("define"), argsList[0], List{atom("lambda"), argsList[1:], list[2]}}, nil
+			}
+		}
+
 		return list, nil
 	case ")":
 		return nil, errors.New("unexpected ')'")
@@ -312,7 +327,6 @@ func eval(exp Expression, env *Environment, depth int) (Expression, int) {
 			}
 		}
 	}
-	return Nil{}, 0
 }
 
 func main() {
