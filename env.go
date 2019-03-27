@@ -7,18 +7,46 @@ import (
 
 func DefaultEnv() *Environment {
 	env := NewEnvironment(nil)
-	env.Set("+", &Procedure{f: func(args []Expression) Expression { return Number(args[0].(Number) + args[1].(Number)) }})
-	env.Set("-", &Procedure{f: func(args []Expression) Expression { return Number(args[0].(Number) - args[1].(Number)) }})
-	env.Set("*", &Procedure{f: func(args []Expression) Expression { return Number(args[0].(Number) * args[1].(Number)) }})
-	env.Set("/", &Procedure{f: func(args []Expression) Expression { return Number(args[0].(Number) / args[1].(Number)) }})
-	env.Set("<", &Procedure{f: func(args []Expression) Expression { return Bool(args[0].(Number) < args[1].(Number)) }})
-	env.Set("<=", &Procedure{f: func(args []Expression) Expression { return Bool(args[0].(Number) <= args[1].(Number)) }})
-	env.Set(">", &Procedure{f: func(args []Expression) Expression { return Bool(args[0].(Number) > args[1].(Number)) }})
-	env.Set(">=", &Procedure{f: func(args []Expression) Expression { return Bool(args[0].(Number) >= args[1].(Number)) }})
-	env.Set("=", &Procedure{f: func(args []Expression) Expression { return Bool(args[0].(Number) == args[1].(Number)) }})
+
+	// Numeric
+	ensureNumeric := func(f func(args []Expression) Expression) func(args []Expression) Expression {
+		return func(args []Expression) Expression {
+			if len(args) != 2 {
+				return Error("invalid arguments")
+			}
+			if _, ok := args[0].(Number); !ok {
+				return Error("argument not a number")
+			}
+			if _, ok := args[1].(Number); !ok {
+				return Error("argument not a number")
+			}
+			return f(args)
+		}
+	}
+	env.Set("+", &Procedure{f: ensureNumeric(func(args []Expression) Expression { return Number(args[0].(Number) + args[1].(Number)) })})
+	env.Set("-", &Procedure{f: ensureNumeric(func(args []Expression) Expression { return Number(args[0].(Number) - args[1].(Number)) })})
+	env.Set("*", &Procedure{f: ensureNumeric(func(args []Expression) Expression { return Number(args[0].(Number) * args[1].(Number)) })})
+	env.Set("/", &Procedure{f: ensureNumeric(func(args []Expression) Expression { return Number(args[0].(Number) / args[1].(Number)) })})
+	env.Set("<", &Procedure{f: ensureNumeric(func(args []Expression) Expression { return Bool(args[0].(Number) < args[1].(Number)) })})
+	env.Set("<=", &Procedure{f: ensureNumeric(func(args []Expression) Expression { return Bool(args[0].(Number) <= args[1].(Number)) })})
+	env.Set(">", &Procedure{f: ensureNumeric(func(args []Expression) Expression { return Bool(args[0].(Number) > args[1].(Number)) })})
+	env.Set(">=", &Procedure{f: ensureNumeric(func(args []Expression) Expression { return Bool(args[0].(Number) >= args[1].(Number)) })})
+	env.Set("=", &Procedure{f: ensureNumeric(func(args []Expression) Expression { return Bool(args[0].(Number) == args[1].(Number)) })})
+
+	// List
 	env.Set("list", &Procedure{f: func(args []Expression) Expression { return List(args) }})
 	env.Set("car", &Procedure{f: func(args []Expression) Expression { return args[0].(List)[0] }})
 	env.Set("cdr", &Procedure{f: func(args []Expression) Expression { return args[0].(List)[1:] }})
+	env.Set("list?", &Procedure{f: func(args []Expression) Expression { _, ok := args[0].(List); return Bool(ok) }})
+	env.Set("nil?", &Procedure{f: func(args []Expression) Expression {
+		if IsNil(args[0]) {
+			return Bool(true)
+		}
+		if list, ok := args[0].(List); ok {
+			return Bool(len(list) == 0)
+		}
+		return Bool(false)
+	}})
 	env.Set("cons", &Procedure{f: func(args []Expression) Expression {
 		if len(args) == 1 {
 			return List{args[0]}
@@ -31,8 +59,12 @@ func DefaultEnv() *Environment {
 		}
 		return List{args[0], args[1]}
 	}})
+
+	// Print
 	env.Set("print", &Procedure{f: func(args []Expression) Expression { fmt.Println(args[0]); return Nil{} }})
 	env.Set("str", &Procedure{f: func(args []Expression) Expression { return String(args[0].ExprToStr()) }})
+
+	// Save and load
 	env.Set("save", &Procedure{f: func(args []Expression) Expression {
 		filename := args[0].(String)
 		expr := args[1]
