@@ -14,12 +14,6 @@ A small Lisp implementation in Go.
 (define sum2 (lambda (n acc) (if (= n 0) acc (sum2 (- n 1) (+ n acc)))))
 (sum2 1000 0)
 ; 500500
-
-;; catch! examples
-(catch! (lambda (throw) (+ 5 (* 10 (catch! (lambda (escape) (* 100 (throw 3))))))))
-; 3
-(catch! (lambda (throw) (+ 5 (* 10 (catch! (lambda (escape) (* 100 (escape 3))))))))
-; 35
 ```
 
 ## Features
