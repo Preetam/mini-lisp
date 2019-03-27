@@ -65,12 +65,10 @@ func (l List) ExprToStr() string {
 }
 
 type Procedure struct {
-	args         []Symbol
-	body         Expression
-	env          *Environment
-	f            func(args []Expression) Expression
-	continuation bool
-	depth        int
+	args []Symbol
+	body Expression
+	env  *Environment
+	f    func(args []Expression) Expression
 }
 
 func (p *Procedure) ExprToStr() string {
@@ -186,7 +184,7 @@ func readFromTokens(tokens *[]string) (Expression, error) {
 		}
 		pop(tokens)
 
-		if list[0] == Symbol("define") {
+		if len(list) > 0 && list[0] == Symbol("define") {
 			// (define (f ...) (...)) => (define f (lambda (...) (...)))
 			if argsList, ok := list[1].(List); ok {
 				return List{atom("define"), argsList[0], List{atom("lambda"), argsList[1:], list[2]}}, nil
@@ -267,16 +265,6 @@ func eval(exp Expression, env *Environment) Expression {
 			default:
 				procExp := eval(listExp[0], env)
 				proc := procExp.(*Procedure)
-				if proc.continuation && proc.f == nil {
-					env = proc.env
-					if proc.body == nil {
-						return Nil{}
-					}
-					exprList := proc.body.(List)
-					exprList = append(List{Symbol("begin")}, exprList...)
-					exp = exprList
-					continue
-				}
 				args := []Expression{}
 				for _, argExp := range listExp[1:] {
 					evalArgExp := eval(argExp, env)
