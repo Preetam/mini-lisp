@@ -314,6 +314,56 @@ func eval(exp Expression, env *Environment, depth int) (Expression, int) {
 	return Nil{}, 0
 }
 
+var funcNum int
+
+func compile(exp Expression) string {
+	switch exp.(type) {
+	case Symbol:
+		return fmt.Sprint("PUSH ENV_GET ", exp.ExprToStr(), "\n")
+	case Number, Bool, String:
+		return fmt.Sprint("PUSH ", exp.ExprToStr(), "\n")
+	case List:
+		listExp := exp.(List)
+		if len(listExp) == 0 {
+			return ""
+		}
+		switch listExp[0] {
+		case Symbol("begin"):
+			result := ""
+			for _, x := range listExp[1:] {
+				result += fmt.Sprint(" ", compile(x))
+			}
+			return result
+		case Symbol("quote"):
+			return fmt.Sprint("PUSH", listExp[1].ExprToStr(), "\n")
+		case Symbol("define"):
+			return fmt.Sprintf("%sDEFINE %s", compile(listExp[2]), listExp[1].ExprToStr())
+		case Symbol("set!"):
+			return fmt.Sprintf("%sSET %s\n", compile(listExp[2]), listExp[1].ExprToStr())
+		case Symbol("if"):
+			result := ""
+			funcNum++
+			result += fmt.Sprintf("func#%d", funcNum) + " (\n" + compile(listExp[2]) + ")\nCOMPILE ()\n"
+			funcNum++
+			result += fmt.Sprintf("func#%d", funcNum) + " (\n" + compile(listExp[3]) + ")\nCOMPILE ()\n"
+			result += compile(listExp[1])
+			return result + "IF\n"
+		case Symbol("lambda"):
+			funcNum++
+			return fmt.Sprintf("func#%d", funcNum) + " (\n" + compile(listExp[2]) + ")\nCOMPILE " + listExp[1].ExprToStr() + "\n"
+		case Symbol("catch!"):
+			return "TODO"
+		default:
+			result := ""
+			for _, argExp := range listExp[1:] {
+				result += fmt.Sprint(compile(argExp))
+			}
+			return result + fmt.Sprintf("CALL %s\n", listExp[0].ExprToStr())
+		}
+	}
+	return ""
+}
+
 func main() {
 	env := DefaultEnv()
 	if len(os.Args) > 1 {
@@ -328,7 +378,9 @@ func main() {
 			if err != nil {
 				return
 			}
-			eval(expr, env, 1)
+			fmt.Println("Compiling ", expr.ExprToStr())
+			fmt.Println(compile(expr))
+			//eval(expr, env, 1)
 		}
 		return
 	}
@@ -351,6 +403,7 @@ func main() {
 			fmt.Println("error:", err)
 			return
 		}
+		fmt.Println(compile(expression))
 		result, _ := eval(expression, env, 1)
 		fmt.Println(result.ExprToStr())
 	}
