@@ -146,6 +146,8 @@ func atom(token string) Expression {
 		return Bool(true)
 	case "#f":
 		return Bool(false)
+	case "nil":
+		return Nil{}
 	}
 	if token[0] == '"' {
 		return String(strings.ReplaceAll(strings.Trim(token, `"`), `\"`, `"`))
@@ -205,7 +207,7 @@ func eval(exp Expression, env *Environment) Expression {
 		case Symbol:
 			v, _ := env.Get(string(exp.(Symbol)))
 			return v
-		case Number, Bool, String:
+		case Number, Bool, String, Nil:
 			return exp
 		case List:
 			listExp := exp.(List)

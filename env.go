@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"strings"
 )
 
 func DefaultEnv() *Environment {
@@ -59,6 +60,34 @@ func DefaultEnv() *Environment {
 		}
 		return List{args[0], args[1]}
 	}})
+
+	// String
+	stringsToList := func(strings []string) List {
+		list := List{}
+		for _, s := range strings {
+			list = append(list, String(s))
+		}
+		return list
+	}
+	ensureStrings := func(f func(args []Expression) Expression, numArgs int) func(args []Expression) Expression {
+		return func(args []Expression) Expression {
+			if len(args) != numArgs {
+				return Error("invalid arguments")
+			}
+			for _, arg := range args {
+				if _, ok := arg.(String); !ok {
+					return Error("argument is not a number")
+				}
+			}
+			return f(args)
+		}
+	}
+	env.Set("strings/split", &Procedure{f: ensureStrings(func(args []Expression) Expression {
+		return stringsToList(strings.Split(string(args[0].(String)), string(args[1].(String))))
+	}, 2)})
+	env.Set("strings/concat", &Procedure{f: ensureStrings(func(args []Expression) Expression {
+		return args[0].(String) + args[1].(String)
+	}, 2)})
 
 	// Print
 	env.Set("print", &Procedure{f: func(args []Expression) Expression { fmt.Println(args[0]); return Nil{} }})
