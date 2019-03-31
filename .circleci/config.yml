@@ -1,0 +1,9 @@
+version: 2
+jobs:
+  build:
+    working_directory: /go/src/github.com/Preetam/mini-lisp
+    docker:
+      - image: golang:1.12
+    steps:
+      - checkout
+      - run: go test -v -cover
