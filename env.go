@@ -76,7 +76,7 @@ func DefaultEnv() *Environment {
 			}
 			for _, arg := range args {
 				if _, ok := arg.(String); !ok {
-					return Error("argument is not a number")
+					return Error("argument is not a string")
 				}
 			}
 			return f(args)
