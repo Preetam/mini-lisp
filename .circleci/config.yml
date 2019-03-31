@@ -6,4 +6,5 @@ jobs:
       - image: golang:1.12
     steps:
       - checkout
+      - run: go get ./...
       - run: go test -v -cover
