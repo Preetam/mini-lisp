@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -183,6 +184,9 @@ func readFromTokens(tokens *[]string) (Expression, error) {
 				return nil, err
 			}
 			list = append(list, expr)
+			if len(*tokens) == 0 {
+				return nil, errors.New("unexpected EOF")
+			}
 		}
 		pop(tokens)
 
@@ -309,6 +313,8 @@ func main() {
 		panic(err)
 	}
 	defer rl.Close()
+
+	buf := &bytes.Buffer{}
 	for {
 		line, err := rl.Readline()
 		if err != nil {
@@ -318,11 +324,18 @@ func main() {
 			continue
 		}
 
-		expression, err := readFromTokens(tokenize(line))
+		buf.WriteString(line)
+		expression, err := readFromTokens(tokenize(buf.String()))
 		if err != nil {
+			if err.Error() == "unexpected EOF" {
+				rl.SetPrompt("| ")
+				continue
+			}
 			fmt.Println("error:", err)
 			return
 		}
+		buf.Reset()
+		rl.SetPrompt("mini-lisp> ")
 		result := eval(expression, env)
 		fmt.Println(result.ExprToStr())
 	}
