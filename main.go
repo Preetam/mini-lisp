@@ -270,7 +270,10 @@ func eval(exp Expression, env *Environment) Expression {
 				}
 			default:
 				procExp := eval(listExp[0], env)
-				proc := procExp.(*Procedure)
+				proc, ok := procExp.(*Procedure)
+				if !ok {
+					return Error("argument not a function")
+				}
 				args := []Expression{}
 				for _, argExp := range listExp[1:] {
 					evalArgExp := eval(argExp, env)
