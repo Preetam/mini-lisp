@@ -205,6 +205,79 @@ func readFromTokens(tokens *[]string) (Expression, error) {
 	}
 }
 
+func compile(exp Expression) string {
+	for {
+		switch exp.(type) {
+		case Symbol:
+			return fmt.Sprintf("func() Expression {v, _ := env.Get(\"%s\"); return v}()", exp.(Symbol))
+		case Number:
+			return "Number(" + fmt.Sprint(exp) + ")"
+		case Bool:
+			return "Bool(" + fmt.Sprint(bool(exp.(Bool))) + ")"
+		case String:
+			return `String("` + string(exp.(String)) + `")`
+		case Nil:
+			return fmt.Sprint("Nil{}")
+		case List:
+			listExp := exp.(List)
+			if len(listExp) == 0 {
+				return ""
+			}
+			switch listExp[0] {
+			case Symbol("begin"):
+				block := "(func() Expression {\n"
+				var ret string
+				for i, x := range listExp[1:] {
+					ret = compile(x)
+					if i == len(listExp)-2 {
+						ret = "return " + ret
+					}
+					block += "\n" + ret
+				}
+				block += "})()"
+				return block
+			case Symbol("define"):
+				val := compile(listExp[2])
+				return fmt.Sprintf("env.Set(\"%s\", %s)", string(listExp[1].(Symbol)), val)
+			case Symbol("if"):
+				block := "(func() Expression {\n"
+				test := compile(listExp[1])
+				block += "\ttest := " + test + "\n"
+				block += fmt.Sprintf("if b, ok := test.(Bool); (ok && bool(b)) {\n")
+				block += "\treturn " + compile(listExp[2]) + "\n"
+				block += "} else {\n"
+				if len(listExp) < 4 {
+					block += "\treturn Nil{}"
+					block += "}}"
+					return block
+				}
+				block += "\treturn " + compile(listExp[3]) + "\n"
+				block += "}})()"
+				return block
+			case Symbol("lambda"):
+				block := "Expression(Procedure(func(args []Expression) Expression {\n"
+				block += "\tenv := NewEnvironment(env)\n"
+				for i, x := range listExp[1].(List) {
+					block += fmt.Sprintf("\tenv.Set(\"%s\", args[%d])\n", string(x.(Symbol)), i)
+				}
+				block += "return " + compile(listExp[2])
+				block += "}))"
+				return block
+			default:
+				block := "func() Expression {\n"
+				block += "\tf := " + compile(listExp[0]) + ".(Procedure)\n"
+				block += "\targs := []Expression{\n"
+				for _, argExp := range listExp[1:] {
+					block += fmt.Sprintf("\t\t%s,\n", compile(argExp))
+				}
+				block += "\t}\n"
+				block += "\treturn f(args)\n}()"
+				return block
+			}
+		}
+	}
+}
+
 func eval(exp Expression, env *Environment) Expression {
 	for {
 		switch exp.(type) {
@@ -339,7 +412,9 @@ func main() {
 		}
 		buf.Reset()
 		rl.SetPrompt("mini-lisp> ")
-		result := eval(expression, env)
-		fmt.Println(result.ExprToStr())
+		fmt.Println(``)
+		fmt.Println(compile(expression))
+		//result := eval(expression, env)
+		//fmt.Println(result.ExprToStr())
 	}
 }
