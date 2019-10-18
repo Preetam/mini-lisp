@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/format"
 	"io/ioutil"
 	"os"
 	"regexp"
@@ -95,12 +96,12 @@ func NewEnvironment(outer *Environment) *Environment {
 	}
 }
 
-func (env *Environment) Get(key string) (Expression, bool) {
+func (env *Environment) Get(key string) Expression {
 	if v, ok := env.values[key]; ok {
-		return v, ok
+		return v
 	}
 	if env.outer == nil {
-		return Nil{}, false
+		return Nil{}
 	}
 	return env.outer.Get(key)
 }
@@ -205,11 +206,14 @@ func readFromTokens(tokens *[]string) (Expression, error) {
 	}
 }
 
-func compile(exp Expression) string {
+func compile(exp Expression, locallyDefined map[Symbol]bool) string {
 	for {
 		switch exp.(type) {
 		case Symbol:
-			return fmt.Sprintf("func() Expression {v, _ := env.Get(\"%s\"); return v}()", exp.(Symbol))
+			if locallyDefined[exp.(Symbol)] {
+				return string(exp.(Symbol))
+			}
+			return fmt.Sprintf("env.Get(\"%s\")", exp.(Symbol))
 		case Number:
 			return "Number(" + fmt.Sprint(exp) + ")"
 		case Bool:
@@ -228,30 +232,33 @@ func compile(exp Expression) string {
 				block := "(func() Expression {\n"
 				var ret string
 				for i, x := range listExp[1:] {
-					ret = compile(x)
+					ret = compile(x, locallyDefined)
 					if i == len(listExp)-2 {
 						ret = "return " + ret
 					}
-					block += "\n" + ret
+					block += ret + "\n"
 				}
 				block += "})()"
 				return block
 			case Symbol("define"):
-				val := compile(listExp[2])
-				return fmt.Sprintf("env.Set(\"%s\", %s)", string(listExp[1].(Symbol)), val)
+				val := compile(listExp[2], locallyDefined)
+				block := fmt.Sprintf("%s := %s", listExp[1].(Symbol), val)
+				locallyDefined[listExp[1].(Symbol)] = true
+				block += fmt.Sprintf("\nenv.Set(\"%s\", %s)", string(listExp[1].(Symbol)), listExp[1].(Symbol))
+				return block
 			case Symbol("if"):
 				block := "(func() Expression {\n"
-				test := compile(listExp[1])
+				test := compile(listExp[1], locallyDefined)
 				block += "\ttest := " + test + "\n"
 				block += fmt.Sprintf("if b, ok := test.(Bool); (ok && bool(b)) {\n")
-				block += "\treturn " + compile(listExp[2]) + "\n"
+				block += "\treturn " + compile(listExp[2], locallyDefined) + "\n"
 				block += "} else {\n"
 				if len(listExp) < 4 {
 					block += "\treturn Nil{}"
 					block += "}}"
 					return block
 				}
-				block += "\treturn " + compile(listExp[3]) + "\n"
+				block += "\treturn " + compile(listExp[3], locallyDefined) + "\n"
 				block += "}})()"
 				return block
 			case Symbol("lambda"):
@@ -259,16 +266,18 @@ func compile(exp Expression) string {
 				block += "\tenv := NewEnvironment(env)\n"
 				for i, x := range listExp[1].(List) {
 					block += fmt.Sprintf("\tenv.Set(\"%s\", args[%d])\n", string(x.(Symbol)), i)
+					block += fmt.Sprintf("\t%s := args[%d]\n", x.(Symbol), i)
+					locallyDefined[x.(Symbol)] = true
 				}
-				block += "return " + compile(listExp[2])
+				block += "return " + compile(listExp[2], locallyDefined)
 				block += "}))"
 				return block
 			default:
 				block := "func() Expression {\n"
-				block += "\tf := " + compile(listExp[0]) + ".(Procedure)\n"
+				block += "\tf := " + compile(listExp[0], locallyDefined) + ".(Procedure)\n"
 				block += "\targs := []Expression{\n"
 				for _, argExp := range listExp[1:] {
-					block += fmt.Sprintf("\t\t%s,\n", compile(argExp))
+					block += fmt.Sprintf("\t\t%s,\n", compile(argExp, locallyDefined))
 				}
 				block += "\t}\n"
 				block += "\treturn f(args)\n}()"
@@ -282,7 +291,7 @@ func eval(exp Expression, env *Environment) Expression {
 	for {
 		switch exp.(type) {
 		case Symbol:
-			v, _ := env.Get(string(exp.(Symbol)))
+			v := env.Get(string(exp.(Symbol)))
 			return v
 		case Number, Bool, String, Nil:
 			return exp
@@ -412,9 +421,8 @@ func main() {
 		}
 		buf.Reset()
 		rl.SetPrompt("mini-lisp> ")
-		fmt.Println(``)
-		fmt.Println(compile(expression))
-		//result := eval(expression, env)
-		//fmt.Println(result.ExprToStr())
+		code := strings.Replace(tmpl, "{{code}}", compile(expression, map[Symbol]bool{}), -1)
+		formatted, _ := format.Source([]byte(code))
+		fmt.Println(string(formatted))
 	}
 }
